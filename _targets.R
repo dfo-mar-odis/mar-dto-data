@@ -401,5 +401,91 @@ list(
         "year",
         which(sort(unique(years)) < as.integer(format(Sys.time(), "%Y")))
       )
+  }),
+
+  tar_target(name = data_onset_of_fall, command = {
+    time_vals <- st_get_dimension_values(data_glorys_sst_butter90, "time")
+    years <- as.integer(format(time_vals, "%Y"))
+
+    minyear <- as.integer(min(format(time_vals, "%Y")))
+
+    octtemp <- data_glorys_sst_butter90[,,,] |>
+      slice(
+        "time",
+        which(
+          format(time_vals, "%m") == "04" &
+            as.integer(format(time_vals, "%Y")) %in%
+              minyear:(minyear +
+                30)
+        )
+      ) |>
+      st_apply(c("longitude", "latitude"), mean, na.rm = TRUE)
+
+    result_list <- lapply(sort(unique(years)), function(yr) {
+      idx <- which(years == yr)
+      doy <- as.integer(format(time_vals[idx], "%j"))
+
+      sst_yr <- st_apply(
+        data_glorys_sst_butter90[,,, idx],
+        c("longitude", "latitude"),
+        function(x) {
+          if (all(is.na(x))) {
+            return(x)
+          }
+          max_idx <- which.max(x)
+          x[seq_len(max_idx)] <- NA # NA any temperature before max temp
+          x
+        },
+        .fname = "time"
+      ) |>
+        aperm(c("longitude", "latitude", "time"))
+
+      st_dimensions(sst_yr)[
+        "time"
+      ] <- st_dimensions(data_glorys_sst_butter90[,,, idx])[
+        "time"
+      ]
+
+      fall <- (sst_yr < octtemp) |>
+        st_apply(c("longitude", "latitude"), function(x) {
+          if (all(is.na(x))) {
+            return(NA_real_)
+          }
+          min(which(x), na.rm = TRUE)
+        })
+      names(fall) <- "Onset of Fall (DOY)"
+      fall
+    })
+
+    result_stars <- do.call(
+      c,
+      c(result_list, list(along = list(year = sort(unique(years)))))
+    )
+
+    result_stars$`Onset of Fall (DOY)`[
+      result_stars$`Onset of Fall (DOY)` > 365
+    ] <- NA
+
+    anomaly <- result_stars |>
+      st_apply(
+        c("longitude", "latitude"),
+        function(x) {
+          if (all(is.na(x))) {
+            rep(NA_real_, length(x))
+          }
+          anomlies <- x / mean(x[1:30], na.rm = TRUE)
+          anomlies
+        },
+        .fname = "year"
+      ) |>
+      aperm(c("longitude", "latitude", "year"))
+    names(anomaly) <- "Onset of Fall Anomaly (Weeks)"
+    st_dimensions(anomaly)["year"] <- st_dimensions(result_stars)["year"]
+
+    c(anomaly, result_stars) |>
+      slice(
+        "year",
+        which(sort(unique(years)) < as.integer(format(Sys.time(), "%Y")))
+      )
   })
 )
