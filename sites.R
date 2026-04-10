@@ -131,3 +131,5 @@ ggplot() +
     legend.text = element_text(size = 15),
     legend.title = element_text(size = 16)
   )
+
+ggsave("MPAmap.png", units = "in", dpi = 300, width = 10, height = 10)
