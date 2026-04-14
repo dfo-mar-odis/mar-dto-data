@@ -387,8 +387,8 @@ list(
           if (all(is.na(x))) {
             rep(NA_real_, length(x))
           }
-          anomlies <- x / mean(x[1:30], na.rm = TRUE)
-          anomlies
+          anomlies <- x - mean(x[1:30], na.rm = TRUE)
+          anomlies / 7
         },
         .fname = "year"
       ) |>
@@ -473,8 +473,8 @@ list(
           if (all(is.na(x))) {
             rep(NA_real_, length(x))
           }
-          anomlies <- x / mean(x[1:30], na.rm = TRUE)
-          anomlies
+          anomlies <- x - mean(x[1:30], na.rm = TRUE)
+          anomlies / 7
         },
         .fname = "year"
       ) |>
@@ -487,5 +487,88 @@ list(
         "year",
         which(sort(unique(years)) < as.integer(format(Sys.time(), "%Y")))
       )
+  }),
+
+  tar_target(name = data_length_growing_season, command = {
+    result_stars <- data_onset_of_fall["Onset of Fall (DOY)"] -
+      data_onset_of_spring["Onset of Spring (DOY)"]
+    names(result_stars) <- "Length of the Growing Season (days)"
+
+    anomaly <- result_stars |>
+      st_apply(
+        c("longitude", "latitude"),
+        function(x) {
+          if (all(is.na(x))) {
+            rep(NA_real_, length(x))
+          }
+          anomlies <- x - mean(x[1:30], na.rm = TRUE)
+          anomlies / 7
+        },
+        .fname = "year"
+      ) |>
+      aperm(c("longitude", "latitude", "year"))
+    names(anomaly) <- "Length of the Growing Season Anomaly (Weeks)"
+    st_dimensions(anomaly)["year"] <- st_dimensions(result_stars)["year"]
+
+    c(anomaly, result_stars)
+  }),
+
+  tar_target(name = ind_glorys_bottomT_trend, command = {
+    annualmean <- aggregate(
+      data_glorys_bottomT,
+      by = "year",
+      FUN = mean,
+      na.rm = TRUE
+    )
+
+    annualmean <- annualmean |>
+      st_set_dimensions(
+        "time",
+        names = "year",
+        st_get_dimension_values(annualmean, "time") |>
+          format("%Y") |>
+          as.integer()
+      ) |>
+      aperm(c("longitude", "latitude", "year"))
+
+    time_numeric <- as.numeric(st_get_dimension_values(
+      annualmean,
+      "year"
+    ))
+
+    data_array <- annualmean[[1]]
+
+    result_array <- apply(data_array, c(1, 2), function(y) {
+      valid <- !is.na(y)
+      if (sum(valid) < 3) {
+        return(c(NA_real_, NA_real_))
+      }
+
+      fit <- .lm.fit(cbind(1, time_numeric[valid]), y[valid])
+      n <- sum(valid)
+      residuals <- y[valid] - cbind(1, time_numeric[valid]) %*% fit$coefficients
+      rss <- sum(residuals^2)
+
+      se <- sqrt(
+        (rss / (n - 2)) /
+          sum((time_numeric[valid] - mean(time_numeric[valid]))^2)
+      )
+      t_stat <- fit$coefficients[2] / se
+      pval <- 2 * pt(abs(t_stat), df = n - 2, lower.tail = FALSE)
+
+      c(fit$coefficients[2], pval)
+    })
+
+    slope_array <- result_array[1, , ]
+    pvalue_array <- result_array[2, , ]
+
+    # convert back to stars
+    result <- st_as_stars(
+      list(slope = slope_array, pvalue = pvalue_array),
+      dimensions = st_dimensions(annualmean)[c(
+        "longitude",
+        "latitude"
+      )]
+    )
   })
 )
