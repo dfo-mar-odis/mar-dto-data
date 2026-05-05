@@ -383,7 +383,6 @@ list(
 
     result_list <- lapply(sort(unique(years)), function(yr) {
       idx <- which(years == yr)
-      doy <- as.integer(format(time_vals[idx], "%j"))
 
       sst_yr <- st_apply(
         data_glorys_sst_butter90[,,, idx],
@@ -435,8 +434,8 @@ list(
           if (all(is.na(x))) {
             rep(NA_real_, length(x))
           }
-          anomlies <- mean(x[1:30], na.rm = TRUE) - x
-          anomlies / 7
+          anomalies <- mean(x[1:30], na.rm = TRUE) - x
+          anomalies / 7
         },
         .fname = "year"
       ) |>
@@ -461,7 +460,7 @@ list(
       slice(
         "time",
         which(
-          format(time_vals, "%m") == "04" &
+          format(time_vals, "%m") == "10" &
             as.integer(format(time_vals, "%Y")) %in%
               minyear:(minyear +
                 30)
@@ -471,7 +470,6 @@ list(
 
     result_list <- lapply(sort(unique(years)), function(yr) {
       idx <- which(years == yr)
-      doy <- as.integer(format(time_vals[idx], "%j"))
 
       sst_yr <- st_apply(
         data_glorys_sst_butter90[,,, idx],
@@ -521,8 +519,8 @@ list(
           if (all(is.na(x))) {
             rep(NA_real_, length(x))
           }
-          anomlies <- mean(x[1:30], na.rm = TRUE) - x
-          anomlies / 7
+          anomalies <- mean(x[1:30], na.rm = TRUE) - x
+          anomalies / 7
         },
         .fname = "year"
       ) |>
@@ -549,8 +547,8 @@ list(
           if (all(is.na(x))) {
             rep(NA_real_, length(x))
           }
-          anomlies <- x - mean(x[1:30], na.rm = TRUE)
-          anomlies / 7
+          anomalies <- x - mean(x[1:30], na.rm = TRUE)
+          anomalies / 7
         },
         .fname = "year"
       ) |>
