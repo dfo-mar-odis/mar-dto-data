@@ -5,12 +5,19 @@ pkgs <- c(
   "sf",
   "arcpullr",
   "rnaturalearth",
-  "dplyr",
   "mregions2",
   "reticulate",
   "stars",
   "ncmeta",
-  "signal"
+  "signal",
+  "terra",
+  "tidyterra",
+  "patchwork",
+  "RColorBrewer",
+  "scales",
+  "purrr",
+  "ggplot2",
+  "dplyr"
 )
 librarian::shelf(pkgs)
 
@@ -613,5 +620,172 @@ list(
     raster_time_trend(data_length_growing_season[
       "Length of the Growing Season Anomaly (Weeks)"
     ])
+  }),
+
+  tar_target(name = plot_spring_fall_example, command = {
+    example_years <- c(1993, 2009, 2025)
+
+    bbox <- st_bbox(MPAs[
+      MPAs$NAME_E == "Western and Emerald Banks Marine Refuge",
+    ])
+    ex_lon <- mean(c(bbox["xmin"], bbox["xmax"]))
+    ex_lat <- mean(c(bbox["ymin"], bbox["ymax"]))
+
+    pt <- st_point(c(ex_lon, ex_lat)) |> st_sfc(crs = 4326) |> st_as_sf()
+
+    combined <- left_join(
+      # normal sst
+      st_extract(data_glorys_sst, pt) |>
+        as.data.frame() |>
+        mutate(sst = as.numeric(thetao)) |>
+        select(-thetao),
+      # filtered sst
+      st_extract(data_glorys_sst_butter90, pt) |>
+        as.data.frame() |>
+        select(-x) |>
+        rename(sst_filt = sst_butter90),
+      by = "time"
+    ) |>
+      mutate(
+        year = as.numeric(format(time, "%Y")),
+        month = as.numeric(format(time, "%m"))
+      )
+
+    indicators <- st_extract(data_onset_of_spring, pt) |>
+      as.data.frame() |>
+      left_join(
+        st_extract(data_onset_of_fall, pt) |>
+          as.data.frame() |>
+          select(-x),
+        by = "year"
+      )
+
+    april_val <- combined |>
+      filter(year <= (min(year) + 30), month == 4) |>
+      summarise(mean(sst_filt, na.rm = TRUE)) |>
+      as.numeric()
+
+    oct_val <- combined |>
+      filter(year <= (min(year) + 30), month == 10) |>
+      summarise(mean(sst_filt, na.rm = TRUE)) |>
+      as.numeric()
+
+    # Build plots without legends
+    plots <- lapply(example_years, function(yr) {
+      df_yr <- combined |>
+        dplyr::filter(year == yr) |>
+        mutate(date = as.Date(time))
+
+      spring_doy <- indicators$`Onset of Spring (DOY)`[indicators$year == yr]
+      fall_doy <- indicators$`Onset of Fall (DOY)`[indicators$year == yr]
+      season_ribbon <- df_yr[spring_doy:fall_doy, ]
+
+      p <- ggplot(df_yr, aes(x = date)) +
+        geom_line(
+          aes(y = sst, colour = "Raw SST"),
+          linewidth = 0.4,
+          alpha = 0.6
+        ) +
+        geom_line(aes(y = sst_filt, colour = "Filtered SST"), linewidth = 0.9) +
+        geom_hline(
+          aes(yintercept = april_val, linetype = "April mean (clim.)"),
+          colour = "#1b7837",
+          linewidth = 0.7
+        ) +
+        geom_hline(
+          aes(yintercept = oct_val, linetype = "October mean (clim.)"),
+          colour = "#762a83",
+          linewidth = 0.7
+        ) +
+        geom_ribbon(
+          data = season_ribbon,
+          aes(ymin = -Inf, ymax = Inf),
+          fill = "#ffd700",
+          alpha = 0.15
+        ) +
+        geom_vline(
+          xintercept = df_yr$date[spring_doy],
+          colour = "#1b7837",
+          linetype = "dashed"
+        ) +
+        annotate(
+          "text",
+          x = df_yr$date[spring_doy],
+          y = max(df_yr$sst, na.rm = TRUE),
+          label = paste0("Spring\nDOY ", spring_doy),
+          hjust = -0.1,
+          size = 3,
+          colour = "#1b7837"
+        ) +
+        geom_vline(
+          xintercept = df_yr$date[fall_doy],
+          colour = "#762a83",
+          linetype = "dashed"
+        ) +
+        annotate(
+          "text",
+          x = df_yr$date[fall_doy],
+          y = max(df_yr$sst, na.rm = TRUE),
+          label = paste0("Fall\nDOY ", fall_doy),
+          hjust = 1.1,
+          size = 3,
+          colour = "#762a83"
+        ) +
+        scale_colour_manual(
+          name = NULL,
+          values = c("Raw SST" = "grey50", "Filtered SST" = "#2166ac")
+        ) +
+        scale_linetype_manual(
+          name = NULL,
+          values = c(
+            "April mean (clim.)" = "solid",
+            "October mean (clim.)" = "solid"
+          )
+        ) +
+        scale_x_date(expand = FALSE) +
+        labs(
+          title = paste("Year:", yr),
+          subtitle = paste0(
+            "Growing season: DOY ",
+            spring_doy,
+            " – ",
+            fall_doy,
+            " (",
+            fall_doy - spring_doy,
+            " days)"
+          ),
+          x = NULL,
+          y = "SST (°C)"
+        ) +
+        theme_bw(base_size = 11) +
+        theme(
+          legend.position = "bottom"
+        )
+    })
+
+    # Collect legends from one plot
+    guide_plot <- plots[[1]] + theme(legend.position = "bottom")
+
+    fig <- wrap_plots(plots, ncol = 1) +
+      guide_area() +
+      plot_layout(
+        ncol = 1,
+        guides = "collect", # merges all legends into one
+        heights = c(1, 1, 1, 0.1) # 3 equal panels + small legend row
+      ) +
+      plot_annotation(
+        title = "Onset of Spring / Fall methodology",
+        subtitle = paste0(
+          "Example pixel — lon: ",
+          round(ex_lon, 2),
+          ", lat: ",
+          round(ex_lat, 2)
+        ),
+        theme = theme(
+          plot.title = element_text(face = "bold"),
+          legend.position = "bottom"
+        )
+      )
+    fig
   })
 )
