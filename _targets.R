@@ -787,5 +787,96 @@ list(
         )
       )
     fig
+  }),
+
+  tar_target(name = plot_spring_minimaps, command = {
+    test <- st_set_dimensions(
+      data_onset_of_spring["Onset of Spring Anomaly (Weeks)"],
+      which = "year",
+      values = as.character(st_get_dimension_values(
+        data_onset_of_spring,
+        "year"
+      )),
+      names = "band"
+    ) |>
+      rast()
+
+    test |>
+      plot()
+  }),
+
+  tar_target(name = plot_growing_season_minimaps, command = {
+    test <- st_set_dimensions(
+      data_length_growing_season[
+        "Length of the Growing Season Anomaly (Weeks)"
+      ],
+      which = "year",
+      values = as.character(st_get_dimension_values(
+        data_length_growing_season,
+        "year"
+      )),
+      names = "band"
+    ) |>
+      rast()
+
+    test |>
+      plot()
+  }),
+
+  tar_target(name = plot_spring_trend_map, command = {
+    # Land / coastline for background
+    land <- ne_countries(scale = "medium", returnclass = "sf") |>
+      st_crop(
+        xmin = -72,
+        xmax = -52,
+        ymin = 40,
+        ymax = 52
+      )
+
+    r <- rast(ind_onset_of_spring_trend)
+
+    slope <- r[["slope_slope"]]
+    pvalue <- r[["pvalue_pvalue"]]
+
+    # Mask slope where pvalue > 0.05 (set to NA)
+    slope_masked <- mask(slope, pvalue > 0.05, maskvalues = 1)
+
+    # Define color palette
+    cols <- colorRampPalette(c(
+      "#2166AC", # deep blue
+      "#74ADD1", # mid blue
+      "lightblue", # light blue
+      "#FFFFFF", # white (zero)
+      "#FEC981", # light orange
+      "#F4820E", # orange
+      "#C13B06" # deep red-orange
+    ))(100)
+
+    # Symmetric limits around zero
+    lim <- max(abs(minmax(slope_masked)), na.rm = TRUE)
+
+    plot(
+      slope_masked,
+      col = cols,
+      range = c(-lim, lim),
+      main = "Onset of Spring Trend (Slope)",
+      plg = list(title = "slope\n(units/yr)"),
+      colNA = "grey"
+    )
+    plot(st_geometry(land), add = TRUE, border = "black", col = "grey80")
+  }),
+
+  tar_target(name = plot_spring_anomaly_timeseries, command = {
+    selected_mpas <- MPAs |>
+      filter(
+        NAME_E %in%
+          c(
+            "St. Anns Bank Marine Protected Area",
+            "Western and Emerald Banks Marine Refuge",
+            "Gully Marine Protected Area",
+            "Northeast Channel Marine Refuge"
+          )
+      )
+    #TODO: plot anomalies
   })
 )
