@@ -711,7 +711,7 @@ list(
         annotate(
           "text",
           x = df_yr$date[spring_doy],
-          y = max(df_yr$sst, na.rm = TRUE),
+          y = max(df_yr$sst, na.rm = TRUE) - 1,
           label = paste0("Spring\nDOY ", spring_doy),
           hjust = -0.1,
           size = 3,
@@ -725,7 +725,7 @@ list(
         annotate(
           "text",
           x = df_yr$date[fall_doy],
-          y = max(df_yr$sst, na.rm = TRUE),
+          y = max(df_yr$sst, na.rm = TRUE) - 1,
           label = paste0("Fall\nDOY ", fall_doy),
           hjust = 1.1,
           size = 3,
@@ -774,18 +774,20 @@ list(
         heights = c(1, 1, 1, 0.1) # 3 equal panels + small legend row
       ) +
       plot_annotation(
-        title = "Onset of Spring / Fall methodology",
-        subtitle = paste0(
-          "Example pixel — lon: ",
-          round(ex_lon, 2),
-          ", lat: ",
-          round(ex_lat, 2)
-        ),
         theme = theme(
           plot.title = element_text(face = "bold"),
           legend.position = "bottom"
         )
       )
+
+    ggsave(
+      filename = paste0(tar_name(), ".png"),
+      plot = fig,
+      width = 6,
+      height = 8,
+      units = "in",
+      dpi = 300
+    )
     fig
   }),
 
@@ -801,8 +803,12 @@ list(
     ) |>
       rast()
 
-    test |>
-      plot()
+    file <- paste0(tar_name(), ".png")
+    png(filename = file, width = 6, height = 6, units = "in", res = 300)
+
+    plot(test)
+    dev.off()
+    file
   }),
 
   tar_target(name = plot_growing_season_minimaps, command = {
@@ -819,8 +825,12 @@ list(
     ) |>
       rast()
 
-    test |>
-      plot()
+    file <- paste0(tar_name(), ".png")
+    png(filename = file, width = 6, height = 6, units = "in", res = 300)
+
+    plot(test)
+    dev.off()
+    file
   }),
 
   tar_target(name = plot_spring_trend_map, command = {
@@ -855,6 +865,9 @@ list(
     # Symmetric limits around zero
     lim <- max(abs(minmax(slope_masked)), na.rm = TRUE)
 
+    file <- paste0(tar_name(), ".png")
+    png(filename = file, width = 6, height = 6, units = "in", res = 300)
+
     plot(
       slope_masked,
       col = cols,
@@ -864,6 +877,58 @@ list(
       colNA = "grey"
     )
     plot(st_geometry(land), add = TRUE, border = "black", col = "grey80")
+
+    dev.off()
+    file
+  }),
+
+  tar_target(name = plot_growing_season_trend_map, command = {
+    # Land / coastline for background
+    land <- ne_countries(scale = "medium", returnclass = "sf") |>
+      st_crop(
+        xmin = -72,
+        xmax = -52,
+        ymin = 40,
+        ymax = 52
+      )
+
+    r <- rast(ind_length_growing_season_trend)
+
+    slope <- r[["slope_slope"]]
+    pvalue <- r[["pvalue_pvalue"]]
+
+    # Mask slope where pvalue > 0.05 (set to NA)
+    slope_masked <- mask(slope, pvalue > 0.05, maskvalues = 1)
+
+    # Define color palette
+    cols <- colorRampPalette(c(
+      "#2166AC", # deep blue
+      "#74ADD1", # mid blue
+      "lightblue", # light blue
+      "#FFFFFF", # white (zero)
+      "#FEC981", # light orange
+      "#F4820E", # orange
+      "#C13B06" # deep red-orange
+    ))(100)
+
+    # Symmetric limits around zero
+    lim <- max(abs(minmax(slope_masked)), na.rm = TRUE)
+
+    file <- paste0(tar_name(), ".png")
+    png(filename = file, width = 6, height = 6, units = "in", res = 300)
+
+    plot(
+      slope_masked,
+      col = cols,
+      range = c(-lim, lim),
+      main = "Onset of Spring Trend (Slope)",
+      plg = list(title = "slope\n(units/yr)"),
+      colNA = "grey"
+    )
+    plot(st_geometry(land), add = TRUE, border = "black", col = "grey80")
+
+    dev.off()
+    file
   }),
 
   tar_target(name = plot_spring_anomaly_timeseries, command = {
